@@ -1,0 +1,279 @@
+---
+title: "Attendance Maximum Problem: A Case Study of School Allocation in Buffalo City"
+subtitle: "Final Project"
+author: "Danqing Wang"
+date: "December 7, 2017"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_depth: 2
+
+---
+
+
+#Introduction
+
+
+Location is often considered the most critical factor leading to the success of a private- or public-sector organization. Location-allocation is a good Location can help keep fixed and overhead costs low and accessibility high. 
+
+Given facilities that provide goods and services and a set of demand points that consume them, the goal of location-allocation is to locate the facilities in a way that supplies the demand points most efficiently. As the name suggests, location-allocation is a twofold problem that simultaneously locates facilities and allocates demand points to the facilities.
+
+
+Maximize Attendance chooses facilities such that as much demand weight as possible is allocated to facilities while assuming the demand weight decreases with distance. The demand points, represented by pie charts in this graphic, show how much of their total demand is captured by the facility. 
+This method considers not only the distance between  home and school but also the quality of high schools. This model takes account of more people’s choice when location-allocation.
+
+
+In this project, I use AMP to allocate high schools of Buffalo to see how can the location best suit for buffalo city.
+
+
+
+
+![Caption for the picture.](/C:/CLASS/GEO503/Final Project_0140/AMP.png)
+
+
+
+
+
+
+# Material and Method
+
+
+The data I use are mainly three parts.
+
+1) Shapefile data of the residential area of Buffalo city;
+   (http://www.ny.gov/)
+  
+2) Enrolled students population in every block group;
+   (https://factfinder.census.gov/faces/nav/jsf/pages/index.xhtml#none)
+  
+3) High school’s score based on student’s evaluation.
+   (https://www.niche.com)
+  
+
+
+![Caption for the picture.](/C:/CLASS/GEO503/Final Project_0140/FUNCTION.png)
+
+
+
+Due to this function is complicated, I choose R to calculate.
+
+
+First, download the necessary packages and declare them in R.
+
+```{r,warning=FALSE,message=FALSE}
+library(rgdal)
+library(dplyr)
+library(tbart)
+library(xlsx)
+library(rgeos)
+library(GISTools)
+library(OIdata)
+```
+
+Second, program equations to express every variance.
+
+```{r,warning=FALSE,message=FALSE}
+#Load all required data
+setwd("C:/CLASS/GEO503/final project")
+buffalo <- readOGR(dsn = ".", layer = "buffalo_resi")
+sch_info <-read.csv("Info_School.csv")
+plot(buffalo)
+```
+```{r}
+sch_info
+```
+
+
+
+```{r,warning=FALSE,message=FALSE}
+#dij
+distance<-euc.dists(buffalo)
+for(i in 1:321)
+{
+  distance[i,i]=(buffalo$area[i]/pi)^(1/2)
+}
+
+#Di  Demand scale
+demand_scale<-as.numeric(matrix(buffalo$Stu_zone,nrow=321,ncol=321,byrow = FALSE))
+
+#Sj  Attractiveness of schools
+sch_attract<-matrix(sch_info$Score1,nrow=19,ncol=321,byrow = FALSE)
+#fij the probability that pupils at demand zone assigned to school 
+fij=data.frame(matrix(NA,nrow=19,ncol=321))
+a=distance*distance   #dij^2  
+b=1/a  #dij^(-2) 
+#numerator
+c=sch_attract%*%b  #Numerator 
+c.df=data.frame(c) 
+sum_f <- sum(c) #denominator 1 element
+fij<-(sch_attract%*%b)/sum_f
+
+# Weight except fij
+u <-distance*demand_scale
+```
+
+When all variance is ready, multiply them together to get the objective function. 
+```{r,warning=FALSE,message=FALSE}
+#sample parts, here I need to find out the maximum value
+#algorithem process
+s1<-sample(c(1:321),size = 19, prob = NULL)
+s1
+
+dij_s1<- 1-0.67*distance[c(s1),]
+
+demand_scale<-matrix(buffalo$Stu_zone,nrow=19,ncol=321,byrow = TRUE)
+mid<-dij_s1*fij
+number_mid <-as.numeric(mid)
+number_scale <-as.numeric(demand_scale)
+number_z<-number_mid*number_scale
+SUM<-sum(number_z) 
+
+
+# Calculate optimal result of AMP
+s1<-c(101, 266,  28, 123, 147,  42, 166, 151, 112, 107,  15, 256,  41,  50, 133, 215, 306, 152, 129)
+dij_s1<- 1-0.67*distance[c(s1),]
+demand_scale<-matrix(buffalo$Stu_zone,nrow=19,ncol=321,byrow = TRUE)#321*19
+mid<-dij_s1*fij
+number_mid <-as.numeric(mid)
+number_scale <-as.numeric(demand_scale)
+number_z<-number_mid*number_scale
+SUM<-sum(number_z)  
+```
+
+
+Now I can get locations of every school. Selected number means the numbder of demand zone.
+Then let's check how the 321 demand zones be allocated to 19 schools.
+
+```{r,warning=FALSE,message=FALSE}
+#number_z.df contains every element allodist-allocation dist, the 'distance' between every demand zone and
+#different schools locations;
+number_z.df<-as.data.frame(matrix(number_z,nrow=19,ncol=321,byrow = F))
+View(number_z.df)
+```
+
+```{r cols.print=3, rows.print=5}
+number_z.df
+```
+
+This form shows that the distance between every demand zones and 19 schools. In order to get the maximum objective, every zones would be allocate to the school which have the biggest distance between them.
+
+```{r,warning=FALSE,message=FALSE}
+colMax <- function(data) sapply(data, max, na.rm = TRUE)
+allocdist<-colMax(number_z.df)
+
+#pick up the row name
+rowNAME <-rownames(number_z.df)[apply(number_z.df,2, which.max)]
+deS0<-c(3,8,51,68,76,80,98,101,124,195,196,214,245,255,265,278,281,282)
+rowNAME[deS0]=0
+rowNAME2<-as.data.frame(rowNAME)
+
+number_z.df1=number_z.df%>%as.data.frame()
+number_z.df1$ID=rep(1:19)
+rowNAME2 <-number_z.df1$ID[apply(number_z.df,2, which.max)]%>%as.data.frame()
+rowNAME2$allocation=rowNAME2$.-1
+
+#add both colMax and rownames in one data frame.
+allo.df <- cbind(allocdist, rowNAME2$allocation)
+allo.df <- data.frame(t(allo.df))
+```
+
+```{r cols.print=3, rows.print=5}
+allo.df
+```
+
+This form "allo.df" I get have information of allocation distance and allocate number of school.
+
+```{r,warning=FALSE,message=FALSE}
+row.names(allo.df)<-c("allocdist","allocate")
+allo.df <- data.frame(t(allo.df))
+#add allo.df to buffalo_resi shapefile then get a new one
+buffalo_resi.df <- as.data.frame(buffalo)
+buffalo_resi_allo.df <- cbind(buffalo_resi.df,allo.df)
+
+allo.shp<- SpatialPolygonsDataFrame(buffalo, buffalo_resi_allo.df)
+class(allo.shp)
+allo.shp.df<-as.data.frame(allo.shp)
+```
+
+In order to visisual school allocation better, I add new attributes of 321 demand zones into the original shapefile. 
+Then I can start to create maps.
+
+
+#Results
+
+
+```{r,warning=FALSE,message=FALSE}
+################Create maps
+###centroids
+trueCentroids = gCentroid(buffalo,byid=TRUE)
+###pick up the essential centroids
+cen.df<-as.data.frame(trueCentroids)
+cen.pick.df<-cen.df[c(s1),]
+
+
+allo.shp$allocate<-as.factor(allo.shp$allocate) 
+allo.shp@data$COLOUR <- "#FFFFFF" 
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 0] <- "grey" 
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 1] <- "green2" 
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 3] <- "lightgreen" 
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 2] <- "yellow4" 
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 4] <- "pink" 
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 5] <- "green3" 
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 6] <- "lightblue" 
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 7] <- "green" 
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 8] <- "blue" 
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 9] <- "yellow4" 
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 10] <- "orange" 
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 11] <- "red"
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 12] <- "yellow"
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 13] <- "orange" 
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 14] <- "wheat"
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 15] <- "lightyellow" 
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 16] <- "blue3"
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 17] <- "yellow2" 
+allo.shp@data$COLOUR[(as.numeric(as.character(allo.shp@data$allocate)) ) == 18] <- "lightpink" 
+
+plot(allo.shp, col=allo.shp$COLOUR) 
+points(cen.pick.df,pch=16,cex=1,col="black")
+title( main = "Allocation Distribution (AMP)")
+buffalo$Stu_zone <-as.numeric(buffalo$Stu_zone)
+```
+
+
+```{r,warning=FALSE,message=FALSE}
+vacant.shades<-auto.shading(buffalo$Stu_zone,n=5,cols = brewer.pal(5,"Blues"))
+choropleth(buffalo,buffalo$Stu_zone,shading = vacant.shades)
+title(main="Student Number in Buffalo")
+choro.legend(533000,161000,vacant.shades)
+points(cen.pick.df,pch=16,cex=1,col="yellow")
+```
+
+According to these two maps, It’s clear that schools are relatively evenly distributed. The area of every region allocated to the same school is also similar.
+
+
+The school which scores are within 3.0-5.0 are concentrated in the middle of Buffalo. Because the probability of students want to choose those good schools is large, so these schools locate on the center of the city, in this way, all of students in the city could go to good schools relatively convenient.
+
+I did not add schools’ quality labels to represent quality of schools successfully, it is a another important factor which can reflect why these school locate like this.
+
+
+
+
+# Conclusion
+
+
+1)According to result, we can see Attendance Maximum Problem has an excellent ability to assign facilities. Besides, it considers people’s choice. 
+
+
+2)My programming mainly includes two parts; one is programming equations, another one is creating maps. Most of my time spent on the former one. I think when we are dealing with data frame with various numbers, we should be cautious about the multiple of metrics. Not only the rows and columns should be corresponding to each other, but also there are different operation in matrix mean differently. 
+
+
+Sometimes, we think programming running means ok. Actually, there may be some accident. For example, when I pick up the row name of the maximum value, if all the number in a column is 0, then the picking up may be wrong. So as we program, we not only need to take account of if the program can run but also need to be careful with those small accidents.
+
+
+# References
+*PAVLOS S. KANAROGLOU,Establishing an air pollution monitoring network for intra-ruban population exposure assessmet:A location-allocation approach, v. 81, p. 1352-2310, June 2004*
+
+
+
+
